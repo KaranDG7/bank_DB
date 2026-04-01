@@ -81,34 +81,39 @@ app.post('/auth/login', async (req, res) => {
 
 // GET /accounts — returns all accounts for logged-in user
 app.get('/accounts', auth, async (req, res) => {
+
   try {
+
+    console.log("User from token:", req.user);
+
+    const userId = req.user.userId || req.user.id;
+
     const personal = await pool.query(
-      `SELECT id, account_number, account_type, bank_name, bank_handle,
-              vpa_address, balance, kyc_status, is_active, created_at
+      `SELECT id, account_number, bank_name, balance
        FROM personal_accounts
-       WHERE user_id = $1 AND is_active = true
-       ORDER BY created_at ASC`,
-      [req.user.id]
+       WHERE user_id = $1`,
+      [userId]
     );
 
     const merchant = await pool.query(
-      `SELECT id, account_number, business_name, merchant_id,
-              merchant_category_name, bank_name, bank_handle,
-              vpa_address, balance, kyc_status, is_active, created_at
+      `SELECT id, account_number, bank_name, balance
        FROM merchant_accounts
-       WHERE user_id = $1 AND is_active = true
-       ORDER BY created_at ASC`,
-      [req.user.id]
+       WHERE user_id = $1`,
+      [userId]
     );
 
     res.json({
       personal: personal.rows,
       merchant: merchant.rows
     });
+
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to fetch accounts' });
+
+    console.error("Accounts API error:", err);
+    res.status(500).json({ error: "Server error" });
+
   }
+
 });
 
 // GET /accounts/personal/:id — single personal account full details
