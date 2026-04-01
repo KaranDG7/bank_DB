@@ -1,0 +1,890 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UPI Fraud Server — Admin Panel</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+  :root {
+    --bg: #0d1117; --surface: #161b22; --surface2: #21262d;
+    --border: #30363d; --text: #e6edf3; --muted: #7d8590;
+    --blue: #2f81f7; --green: #3fb950; --red: #f85149;
+    --yellow: #d29922; --purple: #a371f7;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+  ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* Layout */
+  .sidebar { width: 220px; background: var(--surface); border-right: 1px solid var(--border); height: 100vh; position: fixed; top: 0; left: 0; display: flex; flex-direction: column; }
+  .main { margin-left: 220px; padding: 24px; min-height: 100vh; }
+  .logo { padding: 20px 16px; border-bottom: 1px solid var(--border); }
+  .logo-icon { width: 32px; height: 32px; background: linear-gradient(135deg, #2f81f7, #a371f7); border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; font-size: 16px; margin-right: 8px; vertical-align: middle; }
+  .logo-text { font-weight: 700; font-size: 14px; color: var(--text); vertical-align: middle; }
+  .logo-sub { font-size: 10px; color: var(--muted); margin-top: 4px; letter-spacing: .05em; }
+  nav { padding: 12px 8px; flex: 1; overflow-y: auto; }
+  .nav-section { font-size: 10px; color: var(--muted); letter-spacing: .1em; padding: 8px 8px 4px; text-transform: uppercase; }
+  .nav-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; color: var(--muted); margin-bottom: 1px; transition: all .15s; border: none; background: none; width: 100%; text-align: left; }
+  .nav-item:hover { background: var(--surface2); color: var(--text); }
+  .nav-item.active { background: #2f81f720; color: var(--blue); }
+  .nav-item .icon { font-size: 15px; width: 20px; text-align: center; }
+
+  /* Page */
+  .page { display: none; }
+  .page.active { display: block; }
+  .page-header { margin-bottom: 24px; }
+  .page-title { font-size: 20px; font-weight: 700; }
+  .page-sub { font-size: 13px; color: var(--muted); margin-top: 4px; }
+
+  /* Cards */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 16px; }
+  .card-title { font-size: 13px; font-weight: 600; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; margin-bottom: 16px; }
+  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+  .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+  .stat-val { font-size: 28px; font-weight: 700; }
+  .stat-label { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  /* Forms */
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .form-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+  .form-group { display: flex; flex-direction: column; gap: 5px; }
+  .form-group.full { grid-column: 1 / -1; }
+  .form-value { font-size: 14px; color: var(--text); padding: 4px 0; }
+  label { font-size: 12px; color: var(--muted); font-weight: 500; }
+  input, select, textarea { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; color: var(--text); font-size: 13px; font-family: inherit; outline: none; transition: border .15s; width: 100%; }
+  input:focus, select:focus, textarea:focus { border-color: var(--blue); }
+  input::placeholder { color: var(--muted); }
+  select option { background: var(--surface2); }
+  .checkbox-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; }
+  .checkbox-row input[type="checkbox"] { width: auto; accentColor: var(--blue); }
+  .checkbox-row label { font-size: 13px; color: var(--text); cursor: pointer; margin: 0; }
+
+  /* Buttons */
+  .btn { padding: 9px 18px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; font-weight: 500; font-family: inherit; transition: all .15s; }
+  .btn-primary { background: var(--blue); color: white; }
+  .btn-primary:hover { filter: brightness(1.1); }
+  .btn-danger { background: var(--red); color: white; }
+  .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  .btn-outline:hover { border-color: var(--blue); color: var(--blue); }
+  .btn-sm { padding: 4px 10px; font-size: 11px; }
+  .btn-green { background: var(--green); color: white; }
+
+  /* Tables */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { padding: 8px 12px; text-align: left; color: var(--muted); font-weight: 500; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td { padding: 10px 12px; border-bottom: 1px solid var(--border)22; vertical-align: middle; }
+  tr:hover td { background: var(--surface2)55; }
+  .mono { font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+
+  /* Badges */
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: 600; letter-spacing: .04em; }
+  .badge-green  { background: #3fb95020; color: var(--green); border: 1px solid #3fb95033; }
+  .badge-red    { background: #f8514920; color: var(--red);   border: 1px solid #f8514933; }
+  .badge-yellow { background: #d2992220; color: var(--yellow);border: 1px solid #d2992233; }
+  .badge-blue   { background: #2f81f720; color: var(--blue);  border: 1px solid #2f81f733; }
+  .badge-purple { background: #a371f720; color: var(--purple);border: 1px solid #a371f733; }
+
+  /* Alert */
+  .alert { padding: 12px 16px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; display: none; }
+  .alert.show { display: block; }
+  .alert-success { background: #3fb95015; border: 1px solid #3fb95040; color: var(--green); }
+  .alert-error   { background: #f8514915; border: 1px solid #f8514940; color: var(--red); }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+  .tab { padding: 8px 16px; cursor: pointer; font-size: 13px; color: var(--muted); border-bottom: 2px solid transparent; transition: all .15s; background: none; border-left: none; border-right: none; border-top: none; font-family: inherit; }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--blue); border-bottom-color: var(--blue); }
+
+  /* Search */
+  .search-bar { display: flex; gap: 8px; margin-bottom: 14px; }
+  .search-bar input { flex: 1; }
+  .search-bar .btn { flex-shrink: 0; }
+
+  .section-divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+  .row { display: flex; gap: 12px; align-items: center; }
+  .spacer { flex: 1; }
+  .text-red { color: var(--red); }
+  .text-green { color: var(--green); }
+  .text-yellow { color: var(--yellow); }
+</style>
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="logo">
+    <span class="logo-icon">🛡</span>
+    <span class="logo-text">UPI Shield</span>
+    <div class="logo-sub">ADMIN PANEL</div>
+  </div>
+  <nav>
+    <div class="nav-section">Overview</div>
+    <button class="nav-item active" onclick="showPage('dashboard')"><span class="icon">📊</span> Dashboard</button>
+
+    <div class="nav-section">Accounts</div>
+    <button class="nav-item" onclick="showPage('users')"><span class="icon">👤</span> Users</button>
+    <button class="nav-item" onclick="showPage('personal')"><span class="icon">🏦</span> Personal Accounts</button>
+    <button class="nav-item" onclick="showPage('merchant')"><span class="icon">🏪</span> Merchant Accounts</button>
+    <button class="nav-item" onclick="showPage('transactions')"><span class="icon">💸</span> Transactions</button>
+
+    <div class="nav-section">Create</div>
+    <button class="nav-item" onclick="showPage('create-user')"><span class="icon">➕</span> New User</button>
+    <button class="nav-item" onclick="showPage('create-personal')"><span class="icon">➕</span> Personal Account</button>
+    <button class="nav-item" onclick="showPage('create-merchant')"><span class="icon">➕</span> Merchant Account</button>
+    <button class="nav-item" onclick="showPage('create-txn')"><span class="icon">➕</span> Add Transaction</button>
+
+    <div class="nav-section">Tools</div>
+    <button class="nav-item" onclick="showPage('vpa-search')"><span class="icon">🔍</span> Find by VPA</button>
+    <button class="nav-item" onclick="showPage('vpa-check')"><span class="icon">🛡</span> VPA Analyser</button>
+    <button class="nav-item" onclick="showPage('vpa-transfer')"><span class="icon">💸</span> VPA Transfer</button>
+  </nav>
+</div>
+
+<div class="main">
+  <div id="alert" class="alert"></div>
+
+  <div id="page-dashboard" class="page active">
+    <div class="page-header">
+      <div class="page-title">Dashboard</div>
+      <div class="page-sub">Overview of all database records</div>
+    </div>
+    <div class="stat-grid" id="stats">
+      <div class="stat"><div class="stat-val" id="stat-users">–</div><div class="stat-label">Total Users</div></div>
+      <div class="stat"><div class="stat-val" id="stat-personal">–</div><div class="stat-label">Personal Accounts</div></div>
+      <div class="stat"><div class="stat-val" id="stat-merchant">–</div><div class="stat-label">Merchant Accounts</div></div>
+      <div class="stat"><div class="stat-val" id="stat-txns">–</div><div class="stat-label">Transactions</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Recent Users</div>
+      <div class="table-wrap"><table id="dash-users-table"><thead><tr><th>ID</th><th>Name</th><th>Mobile</th><th>Joined</th></tr></thead><tbody></tbody></table></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Recent Transactions</div>
+      <div class="table-wrap"><table id="dash-txns-table"><thead><tr><th>Ref</th><th>Type</th><th>Amount</th><th>Counterparty</th><th>Status</th><th>Date</th></tr></thead><tbody></tbody></table></div>
+    </div>
+  </div>
+
+  <div id="page-users" class="page">
+    <div class="page-header"><div class="row"><div class="page-title">Users</div><div class="spacer"></div><button class="btn btn-primary" onclick="showPage('create-user')">+ New User</button></div></div>
+    <div class="card">
+      <div class="search-bar"><input type="text" id="user-search" placeholder="Search by name or mobile..." oninput="filterTable('users-table', this.value)"><button class="btn btn-outline" onclick="loadUsers()">↺ Refresh</button></div>
+      <div class="table-wrap">
+        <table id="users-table">
+          <thead><tr><th>ID</th><th>Name</th><th>Mobile</th><th>Email</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="page-personal" class="page">
+    <div class="page-header"><div class="row"><div class="page-title">Personal Accounts</div><div class="spacer"></div><button class="btn btn-primary" onclick="showPage('create-personal')">+ Add Account</button></div></div>
+    <div class="card">
+      <div class="search-bar"><input type="text" id="personal-search" placeholder="Search by account no, VPA, name..." oninput="filterTable('personal-table', this.value)"><button class="btn btn-outline" onclick="loadPersonal()">↺ Refresh</button></div>
+      <div class="table-wrap">
+        <table id="personal-table">
+          <thead><tr><th>ID</th><th>User</th><th>Account No.</th><th>Type</th><th>Bank</th><th>VPA</th><th>Balance</th><th>KYC</th><th>Reports</th><th>Fraud</th><th>Created</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="page-merchant" class="page">
+    <div class="page-header"><div class="row"><div class="page-title">Merchant Accounts</div><div class="spacer"></div><button class="btn btn-primary" onclick="showPage('create-merchant')">+ Add Merchant</button></div></div>
+    <div class="card">
+      <div class="search-bar"><input type="text" placeholder="Search..." oninput="filterTable('merchant-table', this.value)"><button class="btn btn-outline" onclick="loadMerchant()">↺ Refresh</button></div>
+      <div class="table-wrap">
+        <table id="merchant-table">
+          <thead><tr><th>ID</th><th>User</th><th>Business Name</th><th>Account No.</th><th>Category</th><th>Bank</th><th>VPA</th><th>Geohash</th><th>Balance</th><th>KYC</th><th>Reports</th><th>Created</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    <!-- <div class="card">
+      <h3>Update Merchant Geohash</h3>
+
+      <div class="form-group">
+        <label>Merchant Account ID</label>
+        <input id="geo-merchant-id" placeholder="Enter Merchant ID">
+      </div>
+
+      <div class="form-group">
+        <label>Geohash (10 characters)</label>
+        <input id="geo-hash" placeholder="tdr5ru6j2v">
+      </div>
+
+    <button onclick="updateMerchantGeohash()" class="btn">
+        Update Geohash
+      </button>
+    </div> -->
+  </div>
+
+  <div id="page-transactions" class="page">
+    <div class="page-header"><div class="row"><div class="page-title">Transactions</div><div class="spacer"></div><button class="btn btn-primary" onclick="showPage('create-txn')">+ Add Transaction</button></div></div>
+    <div class="card">
+      <div class="search-bar"><input type="text" placeholder="Search..." oninput="filterTable('txns-table', this.value)"><button class="btn btn-outline" onclick="loadTransactions()">↺ Refresh</button></div>
+      <div class="table-wrap">
+        <table id="txns-table">
+          <thead><tr><th>Ref</th><th>Account</th><th>Type</th><th>Amount</th><th>Counterparty</th><th>Note</th><th>Status</th><th>Date</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="page-create-user" class="page">
+    <div class="page-header"><div class="page-title">Create New User</div><div class="page-sub">Add a user with mobile number and 6-digit PIN</div></div>
+    <div class="card" style="max-width:520px">
+      <div class="form-grid">
+        <div class="form-group"><label>Full Name *</label><input type="text" id="cu-name" placeholder="Rahul Sharma"></div>
+        <div class="form-group"><label>Mobile Number *</label><input type="text" id="cu-mobile" placeholder="9876543210" maxlength="10"></div>
+        <div class="form-group"><label>6-Digit PIN *</label><input type="password" id="cu-pin" placeholder="••••••" maxlength="6"></div>
+        <div class="form-group"><label>Email (optional)</label><input type="email" id="cu-email" placeholder="rahul@email.com"></div>
+      </div>
+      <hr class="section-divider">
+      <button class="btn btn-primary" onclick="createUser()">Create User</button>
+    </div>
+  </div>
+
+  <div id="page-create-personal" class="page">
+    <div class="page-header"><div class="page-title">Create Personal Account</div><div class="page-sub">Savings or Current — not merchant</div></div>
+    <div class="card" style="max-width:700px">
+      <div class="form-grid">
+        <div class="form-group"><label>User ID *</label><input type="number" id="cp-userid" placeholder="User ID from Users table"></div>
+        <div class="form-group"><label>Account Type *</label>
+          <select id="cp-type"><option value="savings">Savings</option><option value="current">Current</option></select>
+        </div>
+        <div class="form-group"><label>Account Number *</label><input type="text" id="cp-accno" placeholder="1234567890123456"></div>
+        <div class="form-group"><label>Balance (₹)</label><input type="number" id="cp-balance" placeholder="10000" step="0.01"></div>
+        <div class="form-group"><label>Bank Name</label><input type="text" id="cp-bank" placeholder="Axis Bank"></div>
+        <div class="form-group"><label>Bank Handle</label>
+          <select id="cp-handle">
+            <option value="">-- Select Handle --</option>
+            <option value="okaxis">okaxis (Axis Bank)</option>
+            <option value="ybl">ybl (Yes Bank)</option>
+            <option value="icici">icici (ICICI)</option>
+            <option value="okhdfc">okhdfc (HDFC)</option>
+            <option value="okhdfcbank">okhdfcbank (HDFC)</option>
+            <option value="oksbi">oksbi (SBI)</option>
+            <option value="paytm">paytm (Paytm)</option>
+            <option value="apl">apl (Airtel)</option>
+            <option value="ibl">ibl (IndusInd)</option>
+            <option value="kotak">kotak (Kotak)</option>
+            <option value="upi">upi (Generic)</option>
+          </select>
+        </div>
+        <div class="form-group"><label>VPA Address</label><input type="text" id="cp-vpa" placeholder="rahul.sharma@okaxis"></div>
+        <div class="form-group"><label>IFSC Code</label><input type="text" id="cp-ifsc" placeholder="UTIB0000001"></div>
+        <div class="form-group"><label>KYC Status</label>
+          <select id="cp-kyc"><option value="none">None</option><option value="partial">Partial</option><option value="full">Full</option></select>
+        </div>
+        <div class="form-group"><label>Total Transactions</label><input type="number" id="cp-txns" placeholder="0" value="0"></div>
+        <div class="form-group"><label>Fraud Report Count</label><input type="number" id="cp-reports" placeholder="0" value="0"></div>
+        <div class="form-group"><label>Dispute Count</label><input type="number" id="cp-disputes" placeholder="0" value="0"></div>
+      </div>
+      <div style="display:flex; gap:16px; margin-top:12px; flex-wrap:wrap">
+        <div class="checkbox-row"><input type="checkbox" id="cp-aadhaar"><label for="cp-aadhaar">Aadhaar Linked</label></div>
+        <div class="checkbox-row"><input type="checkbox" id="cp-pan"><label for="cp-pan">PAN Linked</label></div>
+        <div class="checkbox-row"><input type="checkbox" id="cp-fraud"><label for="cp-fraud" style="color:var(--red)">Confirmed Fraud</label></div>
+      </div>
+      <hr class="section-divider">
+      <button class="btn btn-primary" onclick="createPersonal()">Create Account</button>
+    </div>
+  </div>
+
+  <div id="page-create-merchant" class="page">
+    <div class="page-header"><div class="page-title">Create Merchant Account</div><div class="page-sub">Business / merchant with extra fields</div></div>
+    <div class="card" style="max-width:700px">
+      <div class="form-grid">
+        <div class="form-group"><label>User ID *</label><input type="number" id="cm-userid" placeholder="User ID"></div>
+        <div class="form-group"><label>Business Name *</label><input type="text" id="cm-biz" placeholder="Ravi Grocery Store"></div>
+        <div class="form-group"><label>Account Number *</label><input type="text" id="cm-accno" placeholder="1234567890123456"></div>
+        <div class="form-group"><label>Balance (₹)</label><input type="number" id="cm-balance" placeholder="50000" step="0.01"></div>
+        <div class="form-group"><label>Merchant ID</label><input type="text" id="cm-mid" placeholder="MID12345678"></div>
+        <div class="form-group"><label>MCC Code</label>
+          <select id="cm-mcc">
+            <option value="">-- Select Category --</option>
+            <option value="5411">5411 - Grocery Store</option>
+            <option value="5812">5812 - Eating Places / Restaurant</option>
+            <option value="5999">5999 - Misc Retail</option>
+            <option value="7372">7372 - Computer Software</option>
+            <option value="5734">5734 - Electronics Store</option>
+            <option value="5912">5912 - Drug Store / Pharmacy</option>
+            <option value="5311">5311 - Department Store</option>
+            <option value="6552">6552 - Land Developers / Real Estate</option>
+            <option value="7011">7011 - Hotels / Motels</option>
+            <option value="4111">4111 - Transportation</option>
+            <option value="8099">8099 - Health & Medical</option>
+            <option value="7995">7995 - Gambling (HIGH RISK)</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Category Name</label><input type="text" id="cm-catname" placeholder="Grocery Store"></div>
+        <div class="form-group"><label>Business Type</label>
+          <select id="cm-biztype">
+            <option value="sole_proprietor">Sole Proprietor</option>
+            <option value="partnership">Partnership</option>
+            <option value="pvt_ltd">Private Limited</option>
+            <option value="llp">LLP</option>
+          </select>
+        </div>
+        <div class="form-group"><label>GST Number</label><input type="text" id="cm-gst" placeholder="22AAAAA0000A1Z5"></div>
+        <div class="form-group"><label>Bank Name</label><input type="text" id="cm-bank" placeholder="HDFC Bank"></div>
+        <div class="form-group"><label>Bank Handle</label>
+          <select id="cm-handle">
+            <option value="">-- Select Handle --</option>
+            <option value="okaxis">okaxis</option><option value="ybl">ybl</option>
+            <option value="icici">icici</option><option value="okhdfc">okhdfc</option>
+            <option value="oksbi">oksbi</option><option value="paytm">paytm</option>
+            <option value="apl">apl</option><option value="upi">upi</option>
+          </select>
+        </div>
+        <div class="form-group"><label>VPA Address</label><input type="text" id="cm-vpa" placeholder="ravi.grocery@okhdfc"></div>
+        <div class="form-group"><label>Geohash (optional, 10 characters)</label><input id="cm-geohash" placeholder="tdr5ru6j2v"></div>
+        <div class="form-group"><label>IFSC Code</label><input type="text" id="cm-ifsc" placeholder="HDFC0000001"></div>
+        <div class="form-group"><label>KYC Status</label>
+          <select id="cm-kyc"><option value="none">None</option><option value="partial">Partial</option><option value="full">Full</option></select>
+        </div>
+        <div class="form-group"><label>Total Transactions</label><input type="number" id="cm-txns" value="0"></div>
+        <div class="form-group"><label>Fraud Reports</label><input type="number" id="cm-reports" value="0"></div>
+        <div class="form-group"><label>Disputes</label><input type="number" id="cm-disputes" value="0"></div>
+      </div>
+      <div style="display:flex; gap:16px; margin-top:12px; flex-wrap:wrap">
+        <div class="checkbox-row"><input type="checkbox" id="cm-pan"><label for="cm-pan">PAN Linked</label></div>
+        <div class="checkbox-row"><input type="checkbox" id="cm-gstv"><label for="cm-gstv">GST Verified</label></div>
+        <div class="checkbox-row"><input type="checkbox" id="cm-fraud"><label for="cm-fraud" style="color:var(--red)">Confirmed Fraud</label></div>
+      </div>
+      <hr class="section-divider">
+      <button class="btn btn-primary" onclick="createMerchant()">Create Merchant Account</button>
+    </div>
+  </div>
+
+  <div id="page-create-txn" class="page">
+    <div class="page-header"><div class="page-title">Add Transaction</div><div class="page-sub">Manually add a transaction to any account</div></div>
+    <div class="card" style="max-width:600px">
+      <div class="form-grid">
+        <div class="form-group"><label>Account ID *</label><input type="number" id="ct-accid" placeholder="Account ID"></div>
+        <div class="form-group"><label>Account Table *</label>
+          <select id="ct-table"><option value="personal">Personal</option><option value="merchant">Merchant</option></select>
+        </div>
+        <div class="form-group"><label>Transaction Type *</label>
+          <select id="ct-type"><option value="DEBIT">DEBIT (money sent)</option><option value="CREDIT">CREDIT (money received)</option></select>
+        </div>
+        <div class="form-group"><label>Amount (₹) *</label><input type="number" id="ct-amount" placeholder="500" step="0.01"></div>
+        <div class="form-group"><label>Counterparty Name</label><input type="text" id="ct-cpname" placeholder="Priya Mehta"></div>
+        <div class="form-group"><label>Counterparty VPA</label><input type="text" id="ct-cpvpa" placeholder="priya@icici"></div>
+        <div class="form-group"><label>Counterparty Bank</label><input type="text" id="ct-cpbank" placeholder="ICICI Bank"></div>
+        <div class="form-group"><label>Status</label>
+          <select id="ct-status"><option value="SUCCESS">SUCCESS</option><option value="PENDING">PENDING</option><option value="FAILED">FAILED</option></select>
+        </div>
+        <div class="form-group"><label>Category</label>
+          <select id="ct-cat">
+            <option value="transfer">Transfer</option><option value="food">Food</option>
+            <option value="shopping">Shopping</option><option value="rent">Rent</option>
+            <option value="utilities">Utilities</option><option value="medical">Medical</option>
+            <option value="education">Education</option><option value="other">Other</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Balance After (₹)</label><input type="number" id="ct-bal" placeholder="Optional" step="0.01"></div>
+        <div class="form-group full"><label>Note / Description</label><input type="text" id="ct-note" placeholder="e.g. rent payment, birthday gift..."></div>
+      </div>
+      <div style="display:flex; gap:16px; margin-top:10px">
+        <div class="checkbox-row"><input type="checkbox" id="ct-collect"><label for="ct-collect">Is Collect Request</label></div>
+      </div>
+      <hr class="section-divider">
+      <button class="btn btn-primary" onclick="createTransaction()">Add Transaction</button>
+    </div>
+  </div>
+
+  <div id="page-vpa-search" class="page">
+    <div class="page-header">
+      <div class="page-title">Find Account by VPA</div>
+      <div class="page-sub">Lookup comprehensive account details directly from the VPA Directory table</div>
+    </div>
+    <div class="card" style="max-width:500px">
+      <div class="search-bar">
+        <input type="text" id="search-vpa-input" placeholder="e.g. rahul@okaxis">
+        <button class="btn btn-primary" onclick="searchAccountByVPA()">Search VPA</button>
+      </div>
+    </div>
+    
+    <div id="vpa-search-result" style="display:none; max-width:700px;">
+      <div class="card">
+        <div class="card-title">Account Information <span id="vs-acc-type" class="badge badge-blue" style="float:right;"></span></div>
+        <div class="form-grid-3">
+          <div class="form-group"><label>Owner / Business</label><div class="form-value" id="vs-name">--</div></div>
+          <div class="form-group"><label>Account ID</label><div class="form-value" id="vs-id">--</div></div>
+          <div class="form-group"><label>Status</label><div class="form-value" id="vs-fraud">--</div></div>
+          
+          <div class="form-group"><label>VPA Address</label><div class="form-value mono" id="vs-vpa">--</div></div>
+          <div class="form-group"><label>Bank</label><div class="form-value" id="vs-bank">--</div></div>
+          <div class="form-group"><label>Account No.</label><div class="form-value mono" id="vs-accno">--</div></div>
+          
+          <div class="form-group"><label>Balance</label><div class="form-value" id="vs-bal">--</div></div>
+          <div class="form-group"><label>KYC Status</label><div class="form-value" id="vs-kyc">--</div></div>
+          <div class="form-group"><label>Fraud Reports</label><div class="form-value" id="vs-reports">--</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="page-vpa-check" class="page">
+    <div class="page-header"><div class="page-title">VPA Analyser</div><div class="page-sub">Test the fraud scoring engine directly</div></div>
+    <div class="card" style="max-width:500px">
+      <div class="form-grid">
+        <div class="form-group"><label>VPA Address</label><input type="text" id="va-vpa" placeholder="name@bank"></div>
+        <div class="form-group"><label>Amount (₹)</label><input type="number" id="va-amount" placeholder="1000"></div>
+      </div>
+      <hr class="section-divider">
+      <button class="btn btn-primary" onclick="analyseVpa()">Analyse VPA</button>
+    </div>
+    <div id="vpa-result" style="display:none; max-width:700px">
+      <div class="card" id="vpa-verdict-card">
+        <div id="vpa-verdict-content"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Factor Analysis</div>
+        <div id="vpa-factors"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="page-vpa-transfer" class="page">
+    <div class="page-header">
+      <div class="page-title">VPA Transfer</div>
+      <div class="page-sub">Send money using UPI VPA</div>
+    </div>
+    <div class="card" style="max-width:600px;">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>From VPA</label>
+          <input id="tx-from" placeholder="rahul@okaxis">
+        </div>
+        <div class="form-group">
+          <label>To VPA</label>
+          <input id="tx-to" placeholder="shop@oksbi">
+        </div>
+        <div class="form-group">
+          <label>Amount (₹)</label>
+          <input id="tx-amount" type="number" step="0.01">
+        </div>
+        <div class="form-group full">
+          <label>Note</label>
+          <input id="tx-note" placeholder="e.g. Bill split">
+        </div>
+      </div>
+      <hr class="section-divider">
+      <button class="btn btn-primary" onclick="sendVpaTxn()">
+        Send Transaction
+      </button>
+    </div>
+  </div>
+
+</div><script>
+const API = window.location.origin;
+let token = localStorage.getItem('adminToken') || '';
+
+// Quick admin token (no auth for admin panel in prototype)
+// In production: add admin login
+
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  const btns = document.querySelectorAll('.nav-item');
+  btns.forEach(b => { if (b.getAttribute('onclick')?.includes(name)) b.classList.add('active'); });
+
+  // Auto-load data
+  if (name === 'dashboard') loadDashboard();
+  if (name === 'users') loadUsers();
+  if (name === 'personal') loadPersonal();
+  if (name === 'merchant') loadMerchant();
+  if (name === 'transactions') loadTransactions();
+}
+
+function showAlert(msg, type = 'success') {
+  const el = document.getElementById('alert');
+  el.textContent = msg;
+  el.className = `alert show alert-${type}`;
+  setTimeout(() => el.classList.remove('show'), 4000);
+}
+
+async function api(method, path, body) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(API + path, opts);
+  return res.json();
+}
+
+function fmtDate(d) {
+  if (!d) return '–';
+  return new Date(d).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+}
+
+function kycBadge(k) {
+  if (k === 'full')    return '<span class="badge badge-green">Full</span>';
+  if (k === 'partial') return '<span class="badge badge-yellow">Partial</span>';
+  return '<span class="badge badge-red">None</span>';
+}
+
+// ── DASHBOARD ──────────────────────────────────────────────
+async function loadDashboard() {
+  const [users, personal, merchant, txns] = await Promise.all([
+    api('GET', '/admin/users'),
+    api('GET', '/admin/personal-accounts'),
+    api('GET', '/admin/merchant-accounts'),
+    api('GET', '/admin/transactions'),
+  ]);
+  document.getElementById('stat-users').textContent    = users.length;
+  document.getElementById('stat-personal').textContent = personal.length;
+  document.getElementById('stat-merchant').textContent = merchant.length;
+  document.getElementById('stat-txns').textContent     = txns.length;
+
+  const ut = document.querySelector('#dash-users-table tbody');
+  ut.innerHTML = users.slice(0,5).map(u => `
+    <tr><td>${u.id}</td><td>${u.name}</td>
+    <td class="mono">${u.mobile_number}</td>
+    <td>${fmtDate(u.created_at)}</td></tr>`).join('');
+
+  const tt = document.querySelector('#dash-txns-table tbody');
+  tt.innerHTML = txns.slice(0,8).map(t => `
+    <tr><td class="mono">${(t.txn_ref||'').slice(0,15)}</td>
+    <td><span class="badge ${t.txn_type==='CREDIT'?'badge-green':'badge-red'}">${t.txn_type}</span></td>
+    <td>₹${parseFloat(t.amount).toLocaleString('en-IN')}</td>
+    <td>${t.counterparty_name||'–'}<br><span style="font-size:10px;color:var(--muted)">${t.counterparty_vpa||''}</span></td>
+    <td><span class="badge ${t.status==='SUCCESS'?'badge-green':t.status==='FAILED'?'badge-red':'badge-yellow'}">${t.status}</span></td>
+    <td>${fmtDate(t.created_at)}</td></tr>`).join('');
+}
+
+// ── USERS ──────────────────────────────────────────────────
+async function loadUsers() {
+  const data = await api('GET', '/admin/users');
+  const tbody = document.querySelector('#users-table tbody');
+  tbody.innerHTML = data.map(u => `
+    <tr>
+      <td>${u.id}</td>
+      <td><strong>${u.name}</strong></td>
+      <td class="mono">${u.mobile_number}</td>
+      <td>${u.email||'–'}</td>
+      <td><span class="badge ${u.is_active?'badge-green':'badge-red'}">${u.is_active?'Active':'Inactive'}</span></td>
+      <td>${fmtDate(u.created_at)}</td>
+      <td><button class="btn btn-danger btn-sm" onclick="deleteUser(${u.id})">Delete</button></td>
+    </tr>`).join('');
+}
+
+async function deleteUser(id) {
+  if (!confirm('Deactivate this user?')) return;
+  await api('DELETE', `/admin/users/${id}`);
+  showAlert('User deactivated');
+  loadUsers();
+}
+
+// ── PERSONAL ACCOUNTS ──────────────────────────────────────
+async function loadPersonal() {
+  const data = await api('GET', '/admin/personal-accounts');
+  const tbody = document.querySelector('#personal-table tbody');
+  tbody.innerHTML = data.map(a => `
+    <tr>
+      <td>${a.id}</td>
+      <td>${a.user_name}<br><span style="font-size:10px;color:var(--muted)">${a.mobile_number}</span></td>
+      <td class="mono">${a.account_number}</td>
+      <td><span class="badge badge-blue">${a.account_type}</span></td>
+      <td>${a.bank_name||'–'}<br><span style="font-size:10px;color:var(--muted)">@${a.bank_handle||''}</span></td>
+      <td class="mono">${a.vpa_address||'–'}</td>
+      <td>₹${parseFloat(a.balance||0).toLocaleString('en-IN')}</td>
+      <td>${kycBadge(a.kyc_status)}</td>
+      <td>${a.report_count > 0 ? `<span class="text-red">${a.report_count}</span>` : '0'}</td>
+      <td>${a.confirmed_fraud ? '<span class="badge badge-red">FRAUD</span>' : '<span class="badge badge-green">Clean</span>'}</td>
+      <td>${fmtDate(a.created_at)}</td>
+    </tr>`).join('');
+}
+
+// ── MERCHANT ACCOUNTS ──────────────────────────────────────
+async function loadMerchant() {
+  const data = await api('GET', '/admin/merchant-accounts');
+  const tbody = document.querySelector('#merchant-table tbody');
+  tbody.innerHTML = data.map(a => `
+    <tr>
+      <td>${a.id}</td>
+      <td>${a.user_name}<br><span style="font-size:10px;color:var(--muted)">${a.mobile_number}</span></td>
+      <td><strong>${a.business_name||'–'}</strong></td>
+      <td class="mono">${a.account_number}</td>
+      <td>${a.merchant_category||'–'} ${a.merchant_category_name?`<br><span style="font-size:10px;color:var(--muted)">${a.merchant_category_name}</span>`:''}</td>
+      <td>${a.bank_name||'–'}</td>
+      <td class="mono">${a.vpa_address||'–'}</td>
+      <td>${a.geohash ? `<span class="badge badge-blue">${a.geohash}</span>` : '--'}</td>
+      <td>₹${parseFloat(a.balance||0).toLocaleString('en-IN')}</td>
+      <td>${kycBadge(a.kyc_status)}</td>
+      <td>${a.report_count > 0 ? `<span class="text-red">${a.report_count}</span>` : '0'}</td>
+      <td>${fmtDate(a.created_at)}</td>
+    </tr>`).join('');
+}
+// async function updateMerchantGeohash(){
+
+//   const id = document.getElementById("geo-merchant-id").value.trim();
+//   const geohash = document.getElementById("geo-hash").value.trim();
+
+//   if(!id){
+//     alert("Enter merchant ID");
+//     return;
+//   }
+
+//   if(geohash && geohash.length !== 10){
+//     alert("Geohash must be exactly 10 characters");
+//     return;
+//   }
+
+//   try{
+
+//     const res = await fetch(`/admin/update-merchant-geohash/${id}`,{
+//       method:"PUT",
+//       headers:{
+//         "Content-Type":"application/json"
+//       },
+//       body:JSON.stringify({ geohash })
+//     });
+
+//     const data = await res.json();
+
+//     if(!res.ok){
+//       throw new Error(data.error);
+//     }
+
+//     alert("Geohash updated successfully");
+
+//   }catch(err){
+
+//     alert(err.message || "Failed to update geohash");
+
+//   }
+// }
+// ── TRANSACTIONS ───────────────────────────────────────────
+async function loadTransactions() {
+  const data = await api('GET', '/admin/transactions');
+  const tbody = document.querySelector('#txns-table tbody');
+  tbody.innerHTML = data.map(t => `
+    <tr>
+      <td class="mono" style="font-size:10px">${(t.txn_ref||'').slice(0,16)}</td>
+      <td>${t.account_id} <span style="font-size:10px;color:var(--muted)">(${t.account_table})</span></td>
+      <td><span class="badge ${t.txn_type==='CREDIT'?'badge-green':'badge-red'}">${t.txn_type}</span></td>
+      <td><strong>₹${parseFloat(t.amount).toLocaleString('en-IN')}</strong></td>
+      <td>${t.counterparty_name||'–'}<br><span class="mono" style="font-size:10px;color:var(--muted)">${t.counterparty_vpa||''}</span></td>
+      <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis">${t.note||'–'}</td>
+      <td><span class="badge ${t.status==='SUCCESS'?'badge-green':t.status==='FAILED'?'badge-red':'badge-yellow'}">${t.status}</span></td>
+      <td>${fmtDate(t.created_at)}</td>
+    </tr>`).join('');
+}
+
+// ── CREATE FUNCTIONS ───────────────────────────────────────
+async function createUser() {
+  const body = { name: g('cu-name'), mobile: g('cu-mobile'), pin: g('cu-pin'), email: g('cu-email') };
+  if (!body.name || !body.mobile || !body.pin) return showAlert('Fill all required fields', 'error');
+  if (body.pin.length !== 6) return showAlert('PIN must be 6 digits', 'error');
+  const res = await api('POST', '/admin/create-user', body);
+  if (res.success) { showAlert(`✅ User created! ID: ${res.user.id}`); clearForm(['cu-name','cu-mobile','cu-pin','cu-email']); }
+  else showAlert(res.error || 'Failed', 'error');
+}
+
+async function createPersonal() {
+  const body = {
+    user_id: g('cp-userid'), account_number: g('cp-accno'), account_type: g('cp-type'),
+    bank_name: g('cp-bank'), bank_handle: g('cp-handle'), vpa_address: g('cp-vpa'),
+    ifsc_code: g('cp-ifsc'), balance: g('cp-balance'), kyc_status: g('cp-kyc'),
+    aadhaar_linked: gc('cp-aadhaar'), pan_linked: gc('cp-pan'), confirmed_fraud: gc('cp-fraud'),
+    total_transactions: parseInt(g('cp-txns')) || 0,
+    report_count: parseInt(g('cp-reports')) || 0,
+    dispute_count: parseInt(g('cp-disputes')) || 0,
+  };
+  if (!body.user_id || !body.account_number) return showAlert('User ID and Account Number required', 'error');
+  const res = await api('POST', '/admin/create-personal-account', body);
+  if (res.success) showAlert(`✅ Personal account created! ID: ${res.account.id}`);
+  else showAlert(res.error || 'Failed', 'error');
+}
+
+async function createMerchant() {
+  const body = {
+    user_id: g('cm-userid'), account_number: g('cm-accno'), business_name: g('cm-biz'),
+    merchant_id: g('cm-mid'), merchant_category: g('cm-mcc'), merchant_category_name: g('cm-catname'),
+    business_type: g('cm-biztype'), gst_number: g('cm-gst'),
+    bank_name: g('cm-bank'), bank_handle: g('cm-handle'), vpa_address: g('cm-vpa'),
+    ifsc_code: g('cm-ifsc'), balance: g('cm-balance'), kyc_status: g('cm-kyc'),
+    pan_linked: gc('cm-pan'), gst_verified: gc('cm-gstv'), confirmed_fraud: gc('cm-fraud'),
+    total_transactions: parseInt(g('cm-txns')) || 0,
+    report_count: parseInt(g('cm-reports')) || 0,
+    dispute_count: parseInt(g('cm-disputes')) || 0,
+    geohash: g('cm-geohash'),
+  };
+  if (!body.user_id || !body.account_number) return showAlert('User ID and Account Number required', 'error');
+  const res = await api('POST', '/admin/create-merchant-account', body);
+  if (res.success) showAlert(`✅ Merchant account created! ID: ${res.account.id}`);
+  else showAlert(res.error || 'Failed', 'error');
+}
+
+async function createTransaction() {
+  const body = {
+    account_id: g('ct-accid'), account_table: g('ct-table'), txn_type: g('ct-type'),
+    amount: g('ct-amount'), counterparty_name: g('ct-cpname'),
+    counterparty_vpa: g('ct-cpvpa'), counterparty_bank: g('ct-cpbank'),
+    note: g('ct-note'), status: g('ct-status'),
+    is_collect_request: gc('ct-collect'), category: g('ct-cat'),
+    balance_after: g('ct-bal') || null,
+  };
+  if (!body.account_id || !body.amount) return showAlert('Account ID and Amount required', 'error');
+  const res = await api('POST', '/admin/add-transaction', body);
+  if (res.success) showAlert(`✅ Transaction added! Ref: ${res.transaction.txn_ref}`);
+  else showAlert(res.error || 'Failed', 'error');
+}
+
+// ── SEARCH BY VPA ──────────────────────────────────────────
+async function searchAccountByVPA() {
+
+  const vpa = g('search-vpa-input');
+  const resultDiv = document.getElementById('vpa-search-result');
+  resultDiv.style.display = 'none';
+
+  if (!vpa) return showAlert('Please enter a VPA address', 'error');
+
+  try {
+
+    const res = await api('GET', `/api/search-vpa/${encodeURIComponent(vpa)}`);
+
+    if (!res) {
+      return showAlert('No account found for this VPA', 'error');
+    }
+
+    const acc = res;
+
+    document.getElementById('vs-acc-type').textContent =
+      (acc.account_table || 'Unknown').toUpperCase();
+
+    document.getElementById('vs-name').innerHTML =
+      `<strong>Account Holder</strong>`;
+
+    document.getElementById('vs-id').textContent = acc.account_id;
+
+    document.getElementById('vs-vpa').textContent = acc.vpa;
+
+    document.getElementById('vs-bank').textContent =
+      acc.bank_name || 'N/A';
+
+    document.getElementById('vs-accno').textContent =
+      acc.account_number || 'N/A';
+
+    document.getElementById('vs-bal').textContent =
+      `₹${parseFloat(acc.balance || 0).toLocaleString('en-IN')}`;
+    
+    document.getElementById('vs-kyc').textContent =
+(acc.kyc_status || 'none').toUpperCase();
+
+document.getElementById('vs-reports').textContent =
+acc.report_count || 0;
+
+document.getElementById('vs-fraud').innerHTML =
+acc.confirmed_fraud
+? '<span class="badge badge-red">CONFIRMED FRAUD</span>'
+: '<span class="badge badge-green">CLEAN</span>';
+
+    resultDiv.style.display = 'block';
+
+  } catch (err) {
+
+    showAlert('Failed to connect to search API', 'error');
+
+  }
+}
+
+// ── VPA ANALYSER ───────────────────────────────────────────
+async function analyseVpa() {
+  const vpa = g('va-vpa'); const amount = g('va-amount') || 0;
+  if (!vpa) return showAlert('Enter a VPA', 'error');
+  const res = await api('GET', `/vpa/analyse?vpa=${encodeURIComponent(vpa)}&amount=${amount}`);
+
+  const verdictColors = { SAFE:'#3fb950', LOW_RISK:'#3fb950', CAUTION:'#d29922', HIGH_RISK:'#f0883e', BLOCK:'#f85149' };
+  const color = verdictColors[res.verdict] || '#7d8590';
+
+  document.getElementById('vpa-verdict-content').innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+      <div>
+        <div style="font-size:11px;color:var(--muted);letter-spacing:.1em;margin-bottom:4px">VERDICT FOR ${vpa}</div>
+        <div style="font-size:22px;font-weight:700;color:${color}">${res.verdict?.replace('_',' ')}</div>
+        ${res.profile ? `<div style="font-size:12px;color:var(--muted);margin-top:4px">${res.profile.name} · ${res.profile.bank} · KYC: ${res.profile.kyc}</div>` : '<div style="font-size:12px;color:var(--muted)">Not found in database</div>'}
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:42px;font-weight:700;color:${color};line-height:1">${res.score}</div>
+        <div style="font-size:11px;color:var(--muted)">RISK SCORE / 100</div>
+      </div>
+    </div>
+    <div style="height:6px;background:var(--bg);border-radius:3px;margin:14px 0;overflow:hidden">
+      <div style="height:100%;width:${res.score}%;background:${color};border-radius:3px"></div>
+    </div>
+    <div style="padding:10px 14px;background:var(--bg);border-radius:6px;border:1px solid ${color}33;font-size:12px;color:${color}">${res.actionMessage||''}</div>`;
+
+  const factorsHtml = (res.factors||[]).map(f => {
+    const lc = { danger:'#f85149', warn:'#d29922', positive:'#3fb950', info:'#2f81f7' };
+    const lb = { danger:'#f8514920', warn:'#d2992220', positive:'#3fb95020', info:'#2f81f720' };
+    const c = lc[f.level] || lc.info;
+    const b = lb[f.level] || lb.info;
+    return `
+      <div style="padding:10px 14px;background:${b};border:1px solid ${c}30;border-radius:7px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+        <div>
+          <div style="font-size:12px;font-weight:600;color:${c}">${f.label} <span style="font-size:10px;opacity:.7">[${f.level.toUpperCase()}]</span></div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px;line-height:1.5">${f.reason}</div>
+        </div>
+        <div style="font-size:16px;font-weight:700;color:${c};flex-shrink:0">${f.impact > 0 ? '+' : ''}${f.impact}</div>
+      </div>`;
+  }).join('');
+  document.getElementById('vpa-factors').innerHTML = factorsHtml || '<div style="color:var(--muted);font-size:13px">No factors</div>';
+  document.getElementById('vpa-result').style.display = 'block';
+}
+
+// ── VPA TRANSFER ───────────────────────────────────────────
+async function sendVpaTxn(){
+  const body = {
+    from_vpa: g("tx-from"),
+    to_vpa: g("tx-to"),
+    amount: parseFloat(g("tx-amount")),
+    note: g("tx-note"),
+    is_request: false
+  };
+
+  if(!body.from_vpa || !body.to_vpa || !body.amount) {
+    return showAlert('Fill all required transfer fields', 'error');
+  }
+
+  try {
+    const res = await fetch("/api/vpa-transfer", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+
+    const data = await res.json();
+    if(res.ok || data.success) {
+      showAlert(data.message || 'Transfer successful!');
+      clearForm(['tx-from', 'tx-to', 'tx-amount', 'tx-note']);
+    } else {
+      showAlert(data.error || 'Transfer failed', 'error');
+    }
+  } catch (err) {
+    showAlert('Network error during transfer', 'error');
+  }
+}
+
+// ── HELPERS ────────────────────────────────────────────────
+function g(id)  { return document.getElementById(id)?.value?.trim() || ''; }
+function gc(id) { return document.getElementById(id)?.checked || false; }
+function clearForm(ids) { ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; }); }
+function filterTable(tableId, query) {
+  const q = query.toLowerCase();
+  document.querySelectorAll(`#${tableId} tbody tr`).forEach(row => {
+    row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+}
+
+// Load dashboard on start
+loadDashboard();
+</script>
+</body>
+</html>
