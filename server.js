@@ -88,7 +88,7 @@ app.get('/accounts', auth, async (req, res) => {
        FROM personal_accounts
        WHERE user_id = $1 AND is_active = true
        ORDER BY created_at ASC`,
-      [req.user.userId]
+      [req.user.id]
     );
 
     const merchant = await pool.query(
@@ -98,7 +98,7 @@ app.get('/accounts', auth, async (req, res) => {
        FROM merchant_accounts
        WHERE user_id = $1 AND is_active = true
        ORDER BY created_at ASC`,
-      [req.user.userId]
+      [req.user.id]
     );
 
     res.json({
