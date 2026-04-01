@@ -589,18 +589,17 @@ app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date() 
 // ===============================
 // SEARCH ACCOUNT BY VPA
 // ===============================
+
 app.get("/api/search-vpa/:vpa", async (req, res) => {
 
   const { vpa } = req.params;
 
   try {
 
-    const result = await pool.query(
+    // Check personal accounts
+    const personal = await pool.query(
       `SELECT 
-        vd.vpa,
-        vd.account_id,
-        vd.account_table,
-
+        pa.id,
         pa.account_number,
         pa.balance,
         pa.bank_name,
@@ -609,28 +608,49 @@ app.get("/api/search-vpa/:vpa", async (req, res) => {
         pa.kyc_status,
         pa.report_count,
         pa.confirmed_fraud,
-
         u.name AS user_name,
         u.mobile_number
-
-      FROM vpa_directory vd
-
-      LEFT JOIN personal_accounts pa
-      ON vd.account_id = pa.id
-      AND vd.account_table = 'personal'
-
-      LEFT JOIN users u
-      ON pa.user_id = u.id
-
-      WHERE vd.vpa = $1`,
+       FROM personal_accounts pa
+       JOIN users u ON pa.user_id = u.id
+       WHERE pa.vpa_address = $1`,
       [vpa]
     );
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: "VPA not found" });
+    if (personal.rows.length > 0) {
+      return res.json({
+        type: "personal",
+        ...personal.rows[0]
+      });
     }
 
-    res.json(result.rows[0]);
+    // Check merchant accounts
+    const merchant = await pool.query(
+      `SELECT 
+        ma.id,
+        ma.account_number,
+        ma.balance,
+        ma.bank_name,
+        ma.bank_handle,
+        ma.vpa_address,
+        ma.kyc_status,
+        ma.report_count,
+        ma.confirmed_fraud,
+        ma.business_name AS user_name,
+        u.mobile_number
+       FROM merchant_accounts ma
+       JOIN users u ON ma.user_id = u.id
+       WHERE ma.vpa_address = $1`,
+      [vpa]
+    );
+
+    if (merchant.rows.length > 0) {
+      return res.json({
+        type: "merchant",
+        ...merchant.rows[0]
+      });
+    }
+
+    return res.status(404).json({ error: "VPA not found" });
 
   } catch (err) {
 
