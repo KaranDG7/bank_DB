@@ -680,69 +680,195 @@ app.post("/api/vpa-transfer", async (req, res) => {
   if (!from_vpa || !to_vpa || !amount)
     return res.status(400).json({ error: "Missing required fields" });
 
+  const client = await pool.connect();
+
   try {
 
-    const sender = await pool.query(
+    await client.query("BEGIN");
+
+    const sender = await client.query(
       `SELECT * FROM vpa_directory WHERE vpa=$1`,
       [from_vpa]
     );
 
-    const receiver = await pool.query(
+    const receiver = await client.query(
       `SELECT * FROM vpa_directory WHERE vpa=$1`,
       [to_vpa]
     );
 
-    if (sender.rows.length === 0 || receiver.rows.length === 0)
+    if (sender.rows.length === 0 || receiver.rows.length === 0) {
+      await client.query("ROLLBACK");
       return res.status(404).json({ error: "Invalid VPA" });
+    }
 
     const s = sender.rows[0];
     const r = receiver.rows[0];
 
+    let senderBalance;
+
+    // Get sender balance
     if (s.account_table === "personal") {
-      await pool.query(
-        `UPDATE personal_accounts SET balance = balance - $1 WHERE id=$2`,
+      const bal = await client.query(
+        `SELECT balance FROM personal_accounts WHERE id=$1`,
+        [s.account_id]
+      );
+      senderBalance = bal.rows[0].balance;
+    } else {
+      const bal = await client.query(
+        `SELECT balance FROM merchant_accounts WHERE id=$1`,
+        [s.account_id]
+      );
+      senderBalance = bal.rows[0].balance;
+    }
+
+    if (senderBalance < amount) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ error: "Insufficient balance" });
+    }
+
+    // Deduct sender
+    if (s.account_table === "personal") {
+      await client.query(
+        `UPDATE personal_accounts
+         SET balance = balance - $1
+         WHERE id=$2`,
         [amount, s.account_id]
       );
     } else {
-      await pool.query(
-        `UPDATE merchant_accounts SET balance = balance - $1 WHERE id=$2`,
+      await client.query(
+        `UPDATE merchant_accounts
+         SET balance = balance - $1
+         WHERE id=$2`,
         [amount, s.account_id]
       );
     }
 
+    // Credit receiver
     if (r.account_table === "personal") {
-      await pool.query(
-        `UPDATE personal_accounts SET balance = balance + $1 WHERE id=$2`,
+      await client.query(
+        `UPDATE personal_accounts
+         SET balance = balance + $1
+         WHERE id=$2`,
         [amount, r.account_id]
       );
     } else {
-      await pool.query(
-        `UPDATE merchant_accounts SET balance = balance + $1 WHERE id=$2`,
+      await client.query(
+        `UPDATE merchant_accounts
+         SET balance = balance + $1
+         WHERE id=$2`,
         [amount, r.account_id]
       );
     }
 
-    await pool.query(
+    // Insert sender transaction
+    await client.query(
       `INSERT INTO transactions
        (account_id, account_table, txn_type, amount, from_vpa, to_vpa, note, is_request)
        VALUES ($1,$2,'DEBIT',$3,$4,$5,$6,$7)`,
       [s.account_id, s.account_table, amount, from_vpa, to_vpa, note || null, is_request || false]
     );
 
-    await pool.query(
+    // Insert receiver transaction
+    await client.query(
       `INSERT INTO transactions
        (account_id, account_table, txn_type, amount, from_vpa, to_vpa, note, is_request)
        VALUES ($1,$2,'CREDIT',$3,$4,$5,$6,$7)`,
       [r.account_id, r.account_table, amount, from_vpa, to_vpa, note || null, is_request || false]
     );
 
-    res.json({ success: true, message: "Transaction successful" });
+    await client.query("COMMIT");
+
+    res.json({
+      success: true,
+      message: "Transaction successful"
+    });
 
   } catch (err) {
+
+    await client.query("ROLLBACK");
+
     console.error(err);
-    res.status(500).json({ error: "Transaction failed" });
+
+    res.status(500).json({
+      error: "Transaction failed"
+    });
+
+  } finally {
+
+    client.release();
+
   }
 });
+
+// app.post("/api/vpa-transfer", async (req, res) => {
+//   const { from_vpa, to_vpa, amount, note, is_request } = req.body;
+
+//   if (!from_vpa || !to_vpa || !amount)
+//     return res.status(400).json({ error: "Missing required fields" });
+
+//   try {
+
+//     const sender = await pool.query(
+//       `SELECT * FROM vpa_directory WHERE vpa=$1`,
+//       [from_vpa]
+//     );
+
+//     const receiver = await pool.query(
+//       `SELECT * FROM vpa_directory WHERE vpa=$1`,
+//       [to_vpa]
+//     );
+
+//     if (sender.rows.length === 0 || receiver.rows.length === 0)
+//       return res.status(404).json({ error: "Invalid VPA" });
+
+//     const s = sender.rows[0];
+//     const r = receiver.rows[0];
+
+//     if (s.account_table === "personal") {
+//       await pool.query(
+//         `UPDATE personal_accounts SET balance = balance - $1 WHERE id=$2`,
+//         [amount, s.account_id]
+//       );
+//     } else {
+//       await pool.query(
+//         `UPDATE merchant_accounts SET balance = balance - $1 WHERE id=$2`,
+//         [amount, s.account_id]
+//       );
+//     }
+
+//     if (r.account_table === "personal") {
+//       await pool.query(
+//         `UPDATE personal_accounts SET balance = balance + $1 WHERE id=$2`,
+//         [amount, r.account_id]
+//       );
+//     } else {
+//       await pool.query(
+//         `UPDATE merchant_accounts SET balance = balance + $1 WHERE id=$2`,
+//         [amount, r.account_id]
+//       );
+//     }
+
+//     await pool.query(
+//       `INSERT INTO transactions
+//        (account_id, account_table, txn_type, amount, from_vpa, to_vpa, note, is_request)
+//        VALUES ($1,$2,'DEBIT',$3,$4,$5,$6,$7)`,
+//       [s.account_id, s.account_table, amount, from_vpa, to_vpa, note || null, is_request || false]
+//     );
+
+//     await pool.query(
+//       `INSERT INTO transactions
+//        (account_id, account_table, txn_type, amount, from_vpa, to_vpa, note, is_request)
+//        VALUES ($1,$2,'CREDIT',$3,$4,$5,$6,$7)`,
+//       [r.account_id, r.account_table, amount, from_vpa, to_vpa, note || null, is_request || false]
+//     );
+
+//     res.json({ success: true, message: "Transaction successful" });
+
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ error: "Transaction failed" });
+//   }
+// });
 
 // ─────────────────────────────────────────
 // FETCH ACCOUNT TRANSACTION HISTORY
