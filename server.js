@@ -675,10 +675,11 @@ app.get("/api/search-vpa/:vpa", async (req, res) => {
 // ─────────────────────────────────────────
 
 app.post("/api/vpa-transfer", async (req, res) => {
-  const { from_vpa, to_vpa, amount, note, is_request } = req.body;
+  const { from_vpa, to_vpa, amount, note } = req.body;
 
-  if (!from_vpa || !to_vpa || !amount)
+  if (!from_vpa || !to_vpa || !amount) {
     return res.status(400).json({ error: "Missing required fields" });
+  }
 
   const client = await pool.connect();
 
@@ -686,13 +687,19 @@ app.post("/api/vpa-transfer", async (req, res) => {
 
     await client.query("BEGIN");
 
+    // Find sender from vpa_directory
     const sender = await client.query(
-      `SELECT * FROM vpa_directory WHERE vpa=$1`,
+      `SELECT account_id, account_table
+       FROM vpa_directory
+       WHERE vpa = $1`,
       [from_vpa]
     );
 
+    // Find receiver from vpa_directory
     const receiver = await client.query(
-      `SELECT * FROM vpa_directory WHERE vpa=$1`,
+      `SELECT account_id, account_table
+       FROM vpa_directory
+       WHERE vpa = $1`,
       [to_vpa]
     );
 
@@ -707,73 +714,85 @@ app.post("/api/vpa-transfer", async (req, res) => {
     let senderBalance;
 
     // Get sender balance
-    if (s.account_table === "personal") {
+    if (s.account_table === "personal_accounts") {
+
       const bal = await client.query(
-        `SELECT balance FROM personal_accounts WHERE id=$1`,
+        `SELECT balance FROM personal_accounts WHERE id = $1`,
         [s.account_id]
       );
+
       senderBalance = bal.rows[0].balance;
+
     } else {
+
       const bal = await client.query(
-        `SELECT balance FROM merchant_accounts WHERE id=$1`,
+        `SELECT balance FROM merchant_accounts WHERE id = $1`,
         [s.account_id]
       );
+
       senderBalance = bal.rows[0].balance;
     }
 
+    // Check sufficient balance
     if (senderBalance < amount) {
       await client.query("ROLLBACK");
       return res.status(400).json({ error: "Insufficient balance" });
     }
 
-    // Deduct sender
-    if (s.account_table === "personal") {
+    // Deduct sender balance
+    if (s.account_table === "personal_accounts") {
+
       await client.query(
         `UPDATE personal_accounts
          SET balance = balance - $1
-         WHERE id=$2`,
+         WHERE id = $2`,
         [amount, s.account_id]
       );
+
     } else {
+
       await client.query(
         `UPDATE merchant_accounts
          SET balance = balance - $1
-         WHERE id=$2`,
+         WHERE id = $2`,
         [amount, s.account_id]
       );
     }
 
-    // Credit receiver
-    if (r.account_table === "personal") {
+    // Add receiver balance
+    if (r.account_table === "personal_accounts") {
+
       await client.query(
         `UPDATE personal_accounts
          SET balance = balance + $1
-         WHERE id=$2`,
+         WHERE id = $2`,
         [amount, r.account_id]
       );
+
     } else {
+
       await client.query(
         `UPDATE merchant_accounts
          SET balance = balance + $1
-         WHERE id=$2`,
+         WHERE id = $2`,
         [amount, r.account_id]
       );
     }
 
-    // Insert sender transaction
+    // Sender transaction record
     await client.query(
       `INSERT INTO transactions
-       (account_id, account_table, txn_type, amount, from_vpa, to_vpa, note, is_request)
-       VALUES ($1,$2,'DEBIT',$3,$4,$5,$6,$7)`,
-      [s.account_id, s.account_table, amount, from_vpa, to_vpa, note || null, is_request || false]
+       (account_id, account_table, txn_type, amount, from_vpa, to_vpa, note)
+       VALUES ($1,$2,'DEBIT',$3,$4,$5,$6)`,
+      [s.account_id, s.account_table, amount, from_vpa, to_vpa, note || null]
     );
 
-    // Insert receiver transaction
+    // Receiver transaction record
     await client.query(
       `INSERT INTO transactions
-       (account_id, account_table, txn_type, amount, from_vpa, to_vpa, note, is_request)
-       VALUES ($1,$2,'CREDIT',$3,$4,$5,$6,$7)`,
-      [r.account_id, r.account_table, amount, from_vpa, to_vpa, note || null, is_request || false]
+       (account_id, account_table, txn_type, amount, from_vpa, to_vpa, note)
+       VALUES ($1,$2,'CREDIT',$3,$4,$5,$6)`,
+      [r.account_id, r.account_table, amount, from_vpa, to_vpa, note || null]
     );
 
     await client.query("COMMIT");
