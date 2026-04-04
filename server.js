@@ -640,7 +640,9 @@ app.get("/api/search-vpa/:vpa", async (req, res) => {
         ma.kyc_status,
         ma.report_count,
         ma.confirmed_fraud,
-        ma.business_name AS user_name,
+        ma.created_at,
+        ma.geohash,
+        ma.business_name AS name,
         u.mobile_number
        FROM merchant_accounts ma
        JOIN users u ON ma.user_id = u.id
