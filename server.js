@@ -592,7 +592,7 @@ function scoreKnownVpa(p, accountType, bankInfo, amount) {
   factors,
   actionMessage: "Risk score calculated from account history and fraud indicators."
 };
-}
+
 
 // ════════════════════════════════════════════════════════════════
 // ADMIN ROUTES  (no auth for prototype — add auth in production)
