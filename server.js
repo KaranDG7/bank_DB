@@ -276,94 +276,91 @@ function scoreUnknownVpa(vpaPart, handle, bankInfo, amount) {
   };
 }
 
-function scoreKnownVpa(p, accountType, bankInfo, amount) {
+function scoreKnownVpa(p) {
+
   let score = 0;
   const factors = [];
 
-  // Instant block
+  // 1️⃣ Confirmed fraud
   if (p.confirmed_fraud) {
-    score += 65;
-    factors.push({ label: 'CONFIRMED FRAUD', level: 'danger', impact: 65, reason: `Confirmed fraudulent VPA with ${p.report_count} victim reports` });
+    score += 90;
+    factors.push({
+      label: "Confirmed Fraud",
+      level: "danger",
+      impact: 90,
+      reason: "Account marked as confirmed fraud in database"
+    });
   }
 
-  // Trust builders
-  const ageDays = Math.floor((Date.now() - new Date(p.created_at)) / 86400000);
-  if (ageDays > 730)       { score -= 12; factors.push({ label: '2+ Year Old Account', level: 'positive', impact: -12, reason: `Account active for ${ageDays} days — long history reduces fraud probability` }); }
-  else if (ageDays > 365)  { score -= 6;  factors.push({ label: '1+ Year Old Account', level: 'positive', impact: -6,  reason: `Account is ${ageDays} days old` }); }
-  else if (ageDays < 7)    { score += 22; factors.push({ label: 'Extremely New Account', level: 'danger', impact: 22,  reason: `Account only ${ageDays} day(s) old` }); }
-  else if (ageDays < 30)   { score += 12; factors.push({ label: 'New Account (<30 days)', level: 'warn',   impact: 12, reason: `Account is ${ageDays} days old` }); }
+  // 2️⃣ Account age
+  const ageDays =
+    Math.floor((Date.now() - new Date(p.created_at)) / 86400000);
 
-  if (p.kyc_status === 'full')    { score -= 10; factors.push({ label: 'Full KYC Verified',  level: 'positive', impact: -10, reason: 'Aadhaar + PAN linked and verified' }); }
-  else if (p.kyc_status === 'none') { score += 22; factors.push({ label: 'No KYC',            level: 'danger',   impact: 22,  reason: 'Identity completely unverifiable' }); }
-  else if (p.kyc_status === 'partial') { score += 10; factors.push({ label: 'Partial KYC',   level: 'warn',     impact: 10,  reason: 'Only partial identity verified' }); }
-
-  if (p.total_transactions > 500) { score -= 13; factors.push({ label: '500+ Transactions',    level: 'positive', impact: -13, reason: `${p.total_transactions} transactions — strong activity history` }); }
-  else if (p.total_transactions > 100) { score -= 8; factors.push({ label: '100+ Transactions', level: 'positive', impact: -8, reason: `${p.total_transactions} transactions on record` }); }
-  else if (p.total_transactions > 30)  { score -= 4; factors.push({ label: 'Moderate History',  level: 'positive', impact: -4, reason: `${p.total_transactions} transactions` }); }
-  else if (p.total_transactions < 5)   { score += 18; factors.push({ label: 'Near-Zero History', level: 'danger',  impact: 18, reason: `Only ${p.total_transactions} transactions — possible mule account` }); }
-
-  if (p.community_positive > 20) { score -= 8; factors.push({ label: 'Highly Community Trusted', level: 'positive', impact: -8, reason: `${p.community_positive} positive community interactions` }); }
-
-  // Risk factors
-  if (p.report_count > 10) { score += 28; factors.push({ label: `${p.report_count} Fraud Reports`, level: 'danger', impact: 28, reason: 'Multiple independent victim reports — very high confidence fraud' }); }
-  else if (p.report_count > 4) { score += 18; factors.push({ label: `${p.report_count} Fraud Reports`, level: 'danger', impact: 18, reason: 'Multiple reports indicate fraud pattern' }); }
-  else if (p.report_count > 0) { score += 10; factors.push({ label: `${p.report_count} Report(s)`, level: 'warn', impact: 10, reason: 'Fraud reports exist — not conclusive alone' }); }
-
-  if (p.dispute_count > 5) { score += 18; factors.push({ label: `${p.dispute_count} Disputes`, level: 'danger', impact: 18, reason: 'Repeated disputes indicate deceptive collection pattern' }); }
-  else if (p.dispute_count > 2) { score += 8; factors.push({ label: `${p.dispute_count} Disputes`, level: 'warn', impact: 8, reason: 'Multiple payment disputes on record' }); }
-
-  if (p.collect_request_ratio > 0.7 && accountType === 'personal') {
-    score += 13;
-    factors.push({ label: `${Math.round(p.collect_request_ratio * 100)}% Collect Requests`, level: 'danger', impact: 13, reason: 'Heavily uses pull/collect requests — social engineering pattern' });
+  if (ageDays < 30) {
+    score += 12;
+    factors.push({
+      label: "New Account",
+      level: "warn",
+      impact: 12,
+      reason: `Account only ${ageDays} days old`
+    });
   }
 
-  if (p.dormant_days > 300) { score += 12; factors.push({ label: `${p.dormant_days}-Day Dormancy`, level: 'warn', impact: 12, reason: 'Long dormancy revival — possible account takeover or mule' }); }
-
-  // Amount deviation
-  if (amount > 0 && p.avg_receive_amount > 0) {
-    const ratio = amount / p.avg_receive_amount;
-    if (ratio > 10)     { score += 16; factors.push({ label: 'Extreme Amount Deviation',  level: 'danger', impact: 16, reason: `₹${amount.toLocaleString()} is ${ratio.toFixed(0)}× their avg of ₹${p.avg_receive_amount.toLocaleString()}` }); }
-    else if (ratio > 5) { score += 8;  factors.push({ label: 'High Amount Deviation',     level: 'warn',   impact: 8,  reason: `${ratio.toFixed(1)}× above recipient average` }); }
+  if (ageDays > 730) {
+    score -= 5;
+    factors.push({
+      label: "Old Account",
+      level: "positive",
+      impact: -5,
+      reason: "Account older than 2 years"
+    });
   }
 
-  // Bank handle
-  if (!bankInfo) { score += 12; factors.push({ label: 'Unknown Bank Handle', level: 'danger', impact: 12, reason: 'Bank handle not in registered list' }); }
+  // 3️⃣ KYC
+  if (p.kyc_status === "none") {
+    score += 15;
+  }
 
-  // VPA keyword check
-  const vpaPart = (p.vpa_address || '').split('@')[0].toLowerCase();
-  const impersonateKW = ['amazon','flipkart','sbi','hdfc','icici','rbi','npci','google','police','government','income','tax'];
-  const foundImp = impersonateKW.filter(k => vpaPart.includes(k));
-  if (foundImp.length > 0) { score += 20; factors.push({ label: 'Impersonation in VPA', level: 'danger', impact: 20, reason: `VPA contains "${foundImp[0]}" — brand impersonation pattern` }); }
+  if (p.kyc_status === "full") {
+    score -= 5;
+  }
 
-  // Cluster bonus
-  const dangerCount = factors.filter(f => f.level === 'danger').length;
-  if (dangerCount >= 5)      { score += 18; factors.push({ label: 'Extreme Risk Cluster', level: 'danger', impact: 18, reason: `${dangerCount} independent danger signals active simultaneously` }); }
-  else if (dangerCount >= 3) { score += 10; factors.push({ label: 'Multi-Signal Cluster', level: 'warn',   impact: 10, reason: `${dangerCount} danger signals together — compounding risk` }); }
+  // 4️⃣ Transaction history
+  if (p.total_transactions < 5) {
+    score += 10;
+  }
 
+  if (p.total_transactions > 100) {
+    score -= 5;
+  }
+
+  // 5️⃣ Fraud reports
+  if (p.report_count > 5) {
+    score += 25;
+  } else if (p.report_count > 0) {
+    score += 15;
+  }
+
+  // 6️⃣ Disputes
+  if (p.dispute_count > 3) {
+    score += 10;
+  }
+
+  // normalize
   const finalScore = Math.max(0, Math.min(100, score));
+
   let verdict;
-  if (p.confirmed_fraud || finalScore >= 70) verdict = 'BLOCK';
-  else if (finalScore >= 50) verdict = 'HIGH_RISK';
-  else if (finalScore >= 28) verdict = 'CAUTION';
-  else if (finalScore >= 10) verdict = 'LOW_RISK';
-  else verdict = 'SAFE';
 
-  const confidence = p.total_transactions < 5 ? 'LOW' : p.total_transactions < 30 ? 'MEDIUM' : 'HIGH';
+  if (finalScore >= 80) verdict = "BLOCK";
+  else if (finalScore >= 60) verdict = "HIGH_RISK";
+  else if (finalScore >= 30) verdict = "CAUTION";
+  else verdict = "SAFE";
 
-  factors.sort((a, b) => {
-    const o = { danger: 0, warn: 1, positive: 2, info: 3 };
-    return (o[a.level] ?? 4) - (o[b.level] ?? 4);
-  });
-
-  const actions = {
-    BLOCK:     '🚫 Transaction blocked. Report via cybercrime.gov.in or call 1930.',
-    HIGH_RISK: '🔴 Do NOT pay. Verify identity through a separate trusted channel.',
-    CAUTION:   '⚠️ Proceed carefully. Call the recipient directly before paying.',
-    LOW_RISK:  '🟡 Mostly safe. Confirm the name matches who you expect.',
-    SAFE:      '✅ All checks passed. Verify recipient name before confirming.',
+  return {
+    score: finalScore,
+    verdict,
+    factors
   };
-
-  return { score: finalScore, verdict, confidence, factors, actionMessage: actions[verdict] };
 }
 
 // ════════════════════════════════════════════════════════════════
