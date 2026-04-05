@@ -173,115 +173,270 @@ app.get('/transactions/:accountId', auth, async (req, res) => {
 // ════════════════════════════════════════════════════════════════
 // VPA FRAUD ANALYSIS
 // ════════════════════════════════════════════════════════════════
-app.get('/vpa/analyse', auth, async (req, res) => {
+app.get("/vpa/analyse", auth, async (req, res) => {
+
   const { vpa, amount = 0 } = req.query;
-  if (!vpa) return res.status(400).json({ error: 'VPA required' });
+
+  if (!vpa) {
+    return res.status(400).json({
+      error: "VPA parameter required"
+    });
+  }
 
   try {
-    const handle = vpa.split('@')[1]?.toLowerCase() || '';
-    const vpaPart = vpa.split('@')[0]?.toLowerCase() || '';
 
-    // Check personal accounts
-    let profile = null, accountType = null;
-    const personal = await pool.query(
-      `SELECT pa.*, u.name as holder_name FROM personal_accounts pa
-       JOIN users u ON pa.user_id = u.id
-       WHERE pa.vpa_address = $1`, [vpa]
-    );
-    if (personal.rows.length > 0) {
-      profile = personal.rows[0]; accountType = 'personal';
-    } else {
-      const merchant = await pool.query(
-        `SELECT ma.*, u.name as holder_name FROM merchant_accounts ma
-         JOIN users u ON ma.user_id = u.id
-         WHERE ma.vpa_address = $1`, [vpa]
-      );
-      if (merchant.rows.length > 0) {
-        profile = merchant.rows[0]; accountType = 'merchant';
-      }
+    const normalizedVpa = vpa.trim().toLowerCase();
+    const parts = normalizedVpa.split("@");
+
+    if (parts.length !== 2) {
+      return res.status(400).json({
+        error: "Invalid VPA format"
+      });
     }
 
-    // Check bank handle validity
-    const handleCheck = await pool.query(
-      'SELECT * FROM bank_handles WHERE handle = $1', [handle]
+    const vpaName = parts[0];
+    const handle = parts[1];
+
+    // ─────────────────────────────
+    // Check if VPA exists
+    // ─────────────────────────────
+
+    let profile = null;
+    let accountType = null;
+
+    // Personal accounts
+    const personal = await pool.query(
+      `SELECT pa.*, u.name AS holder_name
+       FROM personal_accounts pa
+       JOIN users u ON pa.user_id = u.id
+       WHERE pa.vpa_address = $1`,
+      [normalizedVpa]
     );
-    const bankInfo = handleCheck.rows[0];
+
+    if (personal.rows.length > 0) {
+      profile = personal.rows[0];
+      accountType = "personal";
+    }
+
+    // Merchant accounts
+    if (!profile) {
+
+      const merchant = await pool.query(
+        `SELECT ma.*, u.name AS holder_name
+         FROM merchant_accounts ma
+         JOIN users u ON ma.user_id = u.id
+         WHERE ma.vpa_address = $1`,
+        [normalizedVpa]
+      );
+
+      if (merchant.rows.length > 0) {
+        profile = merchant.rows[0];
+        accountType = "merchant";
+      }
+
+    }
+
+    // ─────────────────────────────
+    // Bank handle validation
+    // ─────────────────────────────
+
+    const bankCheck = await pool.query(
+      `SELECT bank_name
+       FROM bank_handles
+       WHERE handle = $1`,
+      [handle]
+    );
+
+    const bankInfo = bankCheck.rows[0] || null;
+
+    // ─────────────────────────────
+    // UNKNOWN VPA ANALYSIS
+    // ─────────────────────────────
 
     if (!profile) {
-      // Unknown VPA — analyse string only
-      const score = scoreUnknownVpa(vpaPart, handle, bankInfo, parseFloat(amount));
-      return res.json({ found: false, vpa, ...score });
+
+      const result = scoreUnknownVpa(
+        vpaName,
+        handle,
+        bankInfo,
+        parseFloat(amount)
+      );
+
+      return res.json({
+        found: false,
+        vpa: normalizedVpa,
+        ...result
+      });
+
     }
 
-    // Known VPA — full analysis
-    const result = scoreKnownVpa(profile, accountType, bankInfo, parseFloat(amount));
+    // ─────────────────────────────
+    // KNOWN ACCOUNT ANALYSIS
+    // ─────────────────────────────
+
+    const ageDays = Math.floor(
+      (Date.now() - new Date(profile.created_at)) / 86400000
+    );
+
+    const result = scoreKnownVpa(
+      profile,
+      accountType,
+      bankInfo,
+      parseFloat(amount)
+    );
+
     res.json({
-      found: true, vpa, accountType,
+
+      found: true,
+      vpa: normalizedVpa,
+      accountType,
+
       profile: {
-        name: profile.holder_name || profile.business_name,
-        bank: profile.bank_name,
-        handle: profile.bank_handle,
-        kyc: profile.kyc_status,
-        accountAge: Math.floor((Date.now() - new Date(profile.created_at)) / 86400000),
-        totalTxns: profile.total_transactions,
-        reportCount: profile.report_count,
-        confirmedFraud: profile.confirmed_fraud,
+
+        name:
+          profile.holder_name ||
+          profile.business_name,
+
+        bank:
+          profile.bank_name,
+
+        handle:
+          profile.bank_handle,
+
+        kyc:
+          profile.kyc_status,
+
+        accountAge: ageDays,
+
+        totalTxns:
+          profile.total_transactions,
+
+        reportCount:
+          profile.report_count,
+
+        confirmedFraud:
+          profile.confirmed_fraud
+
       },
+
       ...result
+
     });
+
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Analysis failed' });
+
+    console.error("VPA Analysis Error:", err);
+
+    res.status(500).json({
+      error: "Failed to analyse VPA"
+    });
+
   }
+
 });
 
 function scoreUnknownVpa(vpaPart, handle, bankInfo, amount) {
-  let score = 20; // Base unknown penalty
+
+  let score = 20; // base penalty for unknown VPA
   const factors = [];
 
+  // Bank handle validation
   if (!bankInfo) {
     score += 15;
-    factors.push({ label: 'Unknown Bank Handle', level: 'danger', impact: 15, reason: `@${handle} is not a registered UPI bank handle` });
+    factors.push({
+      label: "Unknown Bank Handle",
+      level: "danger",
+      impact: 15,
+      reason: `@${handle} is not a registered UPI bank handle`
+    });
   } else {
     score -= 5;
-    factors.push({ label: 'Valid Bank Handle', level: 'positive', impact: -5, reason: `${bankInfo.bank_name} is a registered bank` });
+    factors.push({
+      label: "Valid Bank Handle",
+      level: "positive",
+      impact: -5,
+      reason: `${bankInfo.bank_name} is a registered bank`
+    });
   }
 
-  const impersonateKW = ['amazon','flipkart','sbi','hdfc','icici','rbi','npci','google','police','government'];
-  const suspiciousKW  = ['prize','win','claim','refund','helpdesk','loan','earn','profit','quick','fund','reward','lucky','lottery','kyc','urgent'];
+  // Keyword detection
+  const impersonateKW = [
+    "amazon","flipkart","sbi","hdfc","icici","rbi","npci",
+    "google","police","government"
+  ];
+
+  const suspiciousKW = [
+    "prize","win","claim","refund","helpdesk","loan","earn",
+    "profit","quick","fund","reward","lucky","lottery","kyc","urgent"
+  ];
+
   const foundImp  = impersonateKW.filter(k => vpaPart.includes(k));
   const foundSusp = suspiciousKW.filter(k => vpaPart.includes(k));
 
   if (foundImp.length > 0) {
     score += 25;
-    factors.push({ label: 'Impersonation Keyword', level: 'danger', impact: 25, reason: `VPA contains "${foundImp[0]}" — fraudsters impersonate banks/brands` });
-  }
-  if (foundSusp.length > 1) {
-    score += 15;
-    factors.push({ label: 'Multiple Fraud Keywords', level: 'danger', impact: 15, reason: `VPA contains: ${foundSusp.join(', ')}` });
-  } else if (foundSusp.length === 1) {
-    score += 8;
-    factors.push({ label: 'Suspicious Keyword', level: 'warn', impact: 8, reason: `VPA contains "${foundSusp[0]}"` });
+    factors.push({
+      label: "Impersonation Keyword",
+      level: "danger",
+      impact: 25,
+      reason: `VPA contains "${foundImp[0]}" — impersonation risk`
+    });
   }
 
-  factors.push({ label: 'Not in Platform Database', level: 'warn', impact: 20, reason: 'No transaction history or community data available for this VPA' });
+  // only apply suspicious keywords if impersonation not already detected
+  if (foundImp.length === 0) {
+
+    if (foundSusp.length > 1) {
+      score += 15;
+      factors.push({
+        label: "Multiple Fraud Keywords",
+        level: "danger",
+        impact: 15,
+        reason: `VPA contains: ${foundSusp.join(", ")}`
+      });
+    }
+
+    else if (foundSusp.length === 1) {
+      score += 8;
+      factors.push({
+        label: "Suspicious Keyword",
+        level: "warn",
+        impact: 8,
+        reason: `VPA contains "${foundSusp[0]}"`
+      });
+    }
+
+  }
+
+  // database absence factor
+  score += 20;
+  factors.push({
+    label: "Not in Platform Database",
+    level: "warn",
+    impact: 20,
+    reason: "No transaction history or community data available for this VPA"
+  });
 
   const finalScore = Math.max(0, Math.min(100, score));
+
   return {
     score: finalScore,
-    verdict: finalScore >= 60 ? 'BLOCK' : finalScore >= 35 ? 'CAUTION' : 'LOW_RISK',
-    confidence: 'VERY_LOW',
+    verdict: finalScore >= 60 ? "BLOCK"
+            : finalScore >= 35 ? "CAUTION"
+            : "LOW_RISK",
+    confidence: "VERY_LOW",
     factors,
-    actionMessage: 'VPA not found in database. Limited analysis only.'
+    actionMessage: "VPA not found in database. Limited analysis only."
   };
 }
 
-function scoreKnownVpa(p) {
+
+function scoreKnownVpa(p, accountType, bankInfo, amount) {
 
   let score = 0;
   const factors = [];
 
-  // 1️⃣ Confirmed fraud
+  // Confirmed fraud
   if (p.confirmed_fraud) {
     score += 90;
     factors.push({
@@ -292,9 +447,10 @@ function scoreKnownVpa(p) {
     });
   }
 
-  // 2️⃣ Account age
-  const ageDays =
-    Math.floor((Date.now() - new Date(p.created_at)) / 86400000);
+  // Account age
+  const ageDays = Math.floor(
+    (Date.now() - new Date(p.created_at)) / 86400000
+  );
 
   if (ageDays < 30) {
     score += 12;
@@ -316,37 +472,79 @@ function scoreKnownVpa(p) {
     });
   }
 
-  // 3️⃣ KYC
+  // KYC
   if (p.kyc_status === "none") {
     score += 15;
+    factors.push({
+      label: "No KYC Verification",
+      level: "danger",
+      impact: 15,
+      reason: "Account has no KYC verification"
+    });
   }
 
   if (p.kyc_status === "full") {
     score -= 5;
+    factors.push({
+      label: "Full KYC Verified",
+      level: "positive",
+      impact: -5,
+      reason: "Account identity fully verified"
+    });
   }
 
-  // 4️⃣ Transaction history
+  // Transaction history
   if (p.total_transactions < 5) {
     score += 10;
+    factors.push({
+      label: "Low Transaction History",
+      level: "warn",
+      impact: 10,
+      reason: "Account has very few transactions"
+    });
   }
 
   if (p.total_transactions > 100) {
     score -= 5;
+    factors.push({
+      label: "High Transaction History",
+      level: "positive",
+      impact: -5,
+      reason: "Account has large transaction history"
+    });
   }
 
-  // 5️⃣ Fraud reports
+  // Fraud reports
   if (p.report_count > 5) {
     score += 25;
-  } else if (p.report_count > 0) {
+    factors.push({
+      label: "Multiple Fraud Reports",
+      level: "danger",
+      impact: 25,
+      reason: "Account reported by multiple users"
+    });
+  }
+  else if (p.report_count > 0) {
     score += 15;
+    factors.push({
+      label: "Fraud Reports",
+      level: "warn",
+      impact: 15,
+      reason: "Account has been reported by users"
+    });
   }
 
-  // 6️⃣ Disputes
+  // Disputes
   if (p.dispute_count > 3) {
     score += 10;
+    factors.push({
+      label: "High Dispute Count",
+      level: "warn",
+      impact: 10,
+      reason: "Multiple disputes reported against this account"
+    });
   }
 
-  // normalize
   const finalScore = Math.max(0, Math.min(100, score));
 
   let verdict;
@@ -359,8 +557,41 @@ function scoreKnownVpa(p) {
   return {
     score: finalScore,
     verdict,
-    factors
+    confidence: "MEDIUM",
+    factors,
+    actionMessage: "Risk score calculated from account history and fraud indicators."
   };
+
+}
+
+  // 6️⃣ Disputes
+  if (p.dispute_count > 3) {
+  score += 10;
+  factors.push({
+    label: "High Dispute Count",
+    level: "warn",
+    impact: 10,
+    reason: "Multiple disputes reported against this account"
+  });
+}
+
+  // normalize
+  const finalScore = Math.max(0, Math.min(100, score));
+
+  let verdict;
+
+  if (finalScore >= 80) verdict = "BLOCK";
+  else if (finalScore >= 60) verdict = "HIGH_RISK";
+  else if (finalScore >= 30) verdict = "CAUTION";
+  else verdict = "SAFE";
+
+  return {
+  score: finalScore,
+  verdict,
+  confidence: "MEDIUM",
+  factors,
+  actionMessage: "Risk score calculated from account history and fraud indicators."
+};
 }
 
 // ════════════════════════════════════════════════════════════════
