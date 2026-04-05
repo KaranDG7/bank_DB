@@ -800,9 +800,6 @@ async function analyseVpa() {
   const vpa = g('va-vpa'); const amount = g('va-amount') || 0;
   if (!vpa) return showAlert('Enter a VPA', 'error');
   const res = await api('GET', `/vpa/analyse?vpa=${encodeURIComponent(vpa)}&amount=${amount}`);
-  if(!res || res.error){
-  return showAlert("VPA analysis failed", "error");
-  }
 
   const verdictColors = { SAFE:'#3fb950', LOW_RISK:'#3fb950', CAUTION:'#d29922', HIGH_RISK:'#f0883e', BLOCK:'#f85149' };
   const color = verdictColors[res.verdict] || '#7d8590';
@@ -811,7 +808,7 @@ async function analyseVpa() {
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
       <div>
         <div style="font-size:11px;color:var(--muted);letter-spacing:.1em;margin-bottom:4px">VERDICT FOR ${vpa}</div>
-        <div style="font-size:22px;font-weight:700;color:${color}">${(res.verdict || "UNKNOWN").replace('_',' ')}</div>
+        <div style="font-size:22px;font-weight:700;color:${color}">${res.verdict?.replace('_',' ')}</div>
         ${res.profile ? `<div style="font-size:12px;color:var(--muted);margin-top:4px">${res.profile.name} · ${res.profile.bank} · KYC: ${res.profile.kyc}</div>` : '<div style="font-size:12px;color:var(--muted)">Not found in database</div>'}
       </div>
       <div style="text-align:right">
@@ -820,11 +817,9 @@ async function analyseVpa() {
       </div>
     </div>
     <div style="height:6px;background:var(--bg);border-radius:3px;margin:14px 0;overflow:hidden">
-    <div style="height:100%;width:${Math.max(res.score,2)}%;background:${color};border-radius:3px"></div>
+      <div style="height:100%;width:${res.score}%;background:${color};border-radius:3px"></div>
     </div>
-    <div style="padding:10px 14px;background:var(--bg);border-radius:6px;border:1px solid ${color}33;font-size:12px;color:${color}">
-      ${res.actionMessage||''}
-    </div>
+    <div style="padding:10px 14px;background:var(--bg);border-radius:6px;border:1px solid ${color}33;font-size:12px;color:${color}">${res.actionMessage||''}</div>`;
 
   const factorsHtml = (res.factors||[]).map(f => {
     const lc = { danger:'#f85149', warn:'#d29922', positive:'#3fb950', info:'#2f81f7' };
